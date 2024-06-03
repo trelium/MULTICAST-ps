@@ -4,7 +4,7 @@
 set -e
 
 # Ask the user about the backup
-read -p "Have you taken a backup of the /opt/mobilecoach-server folder? (y/n): " yn
+read -p "Have you taken a backup of the /opt/mobilecoach-server/mc_global folder? (y/n): " yn
 case $yn in
     [Yy]* ) echo "Proceeding with the script...";;  # Proceed if the answer is yes
     [Nn]* ) echo "Please take a backup before proceeding. Exiting..."; exit 1;;  # Exit if the answer is no
