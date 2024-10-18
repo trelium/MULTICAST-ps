@@ -95,7 +95,7 @@ def main():
             if str(ex_value) == """Execution failed on sql 'SELECT * FROM events': no such table: events""":
                 logger.info(f"Execution failed on sql 'SELECT * FROM events': no such table: events")
             else:
-                logger.error(f"Can't read database file: {dbloc}. --- error: {ex_value}")
+                logger.error(f"Can't read database file: {dbloc} --- error: {ex_value}")
             continue
     
         #logger.info(dbloc)
@@ -114,10 +114,10 @@ def main():
                                     'event_data' : 'data',
                                     'event_time' : 'timestamp'
                                                     }, inplace = True )
-                _ = parse_ios_df(dft)
+                _ = parse_ios_df(dft, dbloc)
         except:
             ex_type, ex_value, ex_traceback = sys.exc_info()
-            logger.error(f"Parsing failed at location: {dbloc}. --- error: {ex_value}")
+            logger.error(f"Parsing failed, no data extracted at location: {dbloc} --- error: {ex_value}")
 
 
     logger.info(f'Execution complete for path: {args.path}')

@@ -1,16 +1,15 @@
 import logging 
 import pandas as pd
-from pathlib import Path
-from glob import glob 
 import os
 import json
 from json.decoder import JSONDecodeError
-from event_ids import iosKeys, andKeys
 import ast
+import sys
 import re
 
+logger = logging.getLogger(__name__)
 
-def parse_ios_df(df_ex):
+def parse_ios_df(df_ex, dbloc):
     """Take as input one pandas dataframe for ios sensing streams and 
     return a dictionary with keys corresponding to the sensing stream ids contained in the input dataframe 
     and pandas dataframes of the desired format as values """
@@ -33,10 +32,15 @@ def parse_ios_df(df_ex):
         try:    
             df2 = df.loc[df['event_id'] == ev_id,'data'].apply(json.loads).apply(pd.Series)
         except JSONDecodeError:
-            df2 = df.loc[df['event_id'] == ev_id,'data'].apply(lambda x: x.decode('utf-8'))
-            df2 = df2.apply(lambda x: x + '}' if not x.strip().endswith('}') else x)
-            df2 = df2.apply(lambda x: x + '"}' if not x.strip().endswith('"}') else x)
-            df2 = df2.apply(json.loads).apply(pd.Series)    
+            try:
+                df2 = df.loc[df['event_id'] == ev_id,'data'].apply(lambda x: x.decode('utf-8'))
+                df2 = df2.apply(lambda x: x + '}' if not x.strip().endswith('}') else x)
+                df2 = df2.apply(lambda x: x + '"}' if not x.strip().endswith('"}') else x)
+                df2 = df2.apply(json.loads).apply(pd.Series)    
+            except JSONDecodeError:
+                ex_type, ex_value, ex_traceback = sys.exc_info()
+                logger.warning(f"Malformed json at location: {dbloc} --- error: {ex_value}")
+                return pd.DataFrame()
         
         return pd.concat([df1, df2], axis = 1)
 
@@ -86,25 +90,34 @@ def parse_ios_df(df_ex):
             ret['STEPS_IOS'] = dfp
         elif ev_id == 22:   
             dfp = explode_json(df_ex,ev_id)
-            dfp = dfp.loc[dfp['sample_type'] == 'HKQuantityTypeIdentifierStepCount']
-            dfp['sample_quantity'] = [x[:-6] for x in dfp['sample_quantity']]
-            dfp['start_date'] = pd.to_datetime(dfp['start_date'], infer_datetime_format=True).dt.tz_convert('Europe/Zurich')
-            dfp['end_date'] = pd.to_datetime(dfp['end_date'], infer_datetime_format=True).dt.tz_convert('Europe/Zurich')
-            dfp.rename(columns={'end_date' : 'end_time',
-                                'start_date' : 'start_time',
-                                'sample_quantity' : 'steps'}, inplace=True)
+            if not dfp.empty:
+                dfp = dfp.loc[dfp['sample_type'] == 'HKQuantityTypeIdentifierStepCount']
+                dfp['sample_quantity'] = [x[:-6] for x in dfp['sample_quantity']]
+                daytime_mapping = {
+                    'am Namittag': 'PM', 
+                    'am Vormittag' : 'AM'
+                    }
+                for key, value in daytime_mapping.items():
+                    dfp['start_date'] = dfp['start_date'].str.replace(key, value)
+                    dfp['end_date'] = dfp['end_date'].str.replace(key, value)
 
-            ret['STEPS'] = dfp[['start_time', 'end_time','user_id', 'steps']]
+                dfp['start_date'] = pd.to_datetime(dfp['start_date'], infer_datetime_format=True).dt.tz_convert('Europe/Zurich')
+                dfp['end_date'] = pd.to_datetime(dfp['end_date'], infer_datetime_format=True).dt.tz_convert('Europe/Zurich')
+                dfp.rename(columns={'end_date' : 'end_time',
+                                    'start_date' : 'start_time',
+                                    'sample_quantity' : 'steps'}, inplace=True)
 
-            pattern = r'name:(.*?), bundle:(.*?), version:(.*?), productType:(.*?), operatingSystemVersion:(.*?)>'
-            dfp[['name', 'bundle', 'version', 'productType', 'operatingSystemVersion']] = dfp['source'].str.extract(pattern)
+                ret['STEPS'] = dfp[['start_time', 'end_time','user_id', 'steps']]
 
-            #dfp['operatingSystemVersion'] = dfp['source'].str.split("""\n""", expand=True)[2].str.split("""=""", expand=True)[1].str.strip('"').str.strip(';')
-            #dfp['productType'] = dfp['source'].str.split("""\n""", expand=True)[3].str.split("""=""", expand=True)[1].str.strip('"').str.strip(';')
-            #ret['DEVICE_STATE'] = pd.concat([ret['DEVICE_STATE'], dfp[['user_id','start_date','end_date','operatingSystemVersion']]], axis = 0)
-            #ret['DEVICE_INFO'].loc[:,'productType'] = dfp['productType'].iloc[0]
+                pattern = r'name:(.*?), bundle:(.*?), version:(.*?), productType:(.*?), operatingSystemVersion:(.*?)>'
+                dfp[['name', 'bundle', 'version', 'productType', 'operatingSystemVersion']] = dfp['source'].str.extract(pattern)
 
-            ret['DEVICE_INFO'] = dfp[['name', 'bundle', 'version', 'productType', 'operatingSystemVersion','start_time']]
+                #dfp['operatingSystemVersion'] = dfp['source'].str.split("""\n""", expand=True)[2].str.split("""=""", expand=True)[1].str.strip('"').str.strip(';')
+                #dfp['productType'] = dfp['source'].str.split("""\n""", expand=True)[3].str.split("""=""", expand=True)[1].str.strip('"').str.strip(';')
+                #ret['DEVICE_STATE'] = pd.concat([ret['DEVICE_STATE'], dfp[['user_id','start_date','end_date','operatingSystemVersion']]], axis = 0)
+                #ret['DEVICE_INFO'].loc[:,'productType'] = dfp['productType'].iloc[0]
+
+                ret['DEVICE_INFO'] = dfp[['name', 'bundle', 'version', 'productType', 'operatingSystemVersion','start_time']]
         elif ev_id == 23:   
             dfp = explode_json(df_ex,ev_id,drop_timestamp=True)   
             dfp = dfp.astype({"duration": float})
@@ -225,6 +238,9 @@ def parse_and_df(df_ex, dbloc):
             ret['LOCATION_PING'] = dfp[['timestamp', 'user_id','ping']]
         elif ev_id == 91:  
             dfp = explode_json(df_ex,ev_id,drop_timestamp=False)
+            dfp.loc[dfp['state']=='disconnected',['SSID','bssid']] = None
+            dfp['bssid'] = dfp['bssid'].astype(object)
+            dfp.loc[dfp['state']=='disconnected',['bssid']] = None
             dfp.rename(columns={'SSID' : 'ssid'}, inplace = True)    
             ret['WIFI_CONNECTED'] = dfp[['timestamp', 'user_id', 'bssid', 'ssid']]
         elif ev_id == 9: 
