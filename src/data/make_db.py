@@ -45,7 +45,7 @@ def setup_logging(log_file, log_level):
     console_handler.setFormatter(console_format)
     file_handler.setFormatter(file_format)
 
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger('make_db')
     logger.setLevel(logging.DEBUG)  # Set to the lowest level to capture all messages
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
@@ -93,7 +93,7 @@ def main():
         except pd.errors.DatabaseError:
             ex_type, ex_value, ex_traceback = sys.exc_info()
             if str(ex_value) == """Execution failed on sql 'SELECT * FROM events': no such table: events""":
-                logger.info(f"Execution failed on sql 'SELECT * FROM events': no such table: events")
+                logger.info(f"At location {dbloc} Execution failed on sql 'SELECT * FROM events': no such table: events")
             else:
                 logger.error(f"Can't read database file: {dbloc} --- error: {ex_value}")
             continue
@@ -119,6 +119,9 @@ def main():
             ex_type, ex_value, ex_traceback = sys.exc_info()
             logger.error(f"Parsing failed, no data extracted at location: {dbloc} --- error: {ex_value}")
 
+        ##return rows as list of tuples        records = df.to_records(index=False)   return list(records)
+        #columns must be same 
+        
 
     logger.info(f'Execution complete for path: {args.path}')
 

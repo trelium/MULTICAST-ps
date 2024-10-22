@@ -7,14 +7,15 @@ import ast
 import sys
 import re
 
-logger = logging.getLogger(__name__)
+#TODO input values might contain quotation marks, semicolons, % and _ wildcard characters
+
+logger = logging.getLogger('make_db')
 
 def parse_ios_df(df_ex, dbloc):
     """Take as input one pandas dataframe for ios sensing streams and 
     return a dictionary with keys corresponding to the sensing stream ids contained in the input dataframe 
     and pandas dataframes of the desired format as values """
     
-    #TODO input values might contain quotation marks, semicolons, % and _ wildcard characters
     #TODO check in the final device info table whether there are multiple device ids connected to the same user_id. 
     # If so it makes more sense to save data in sensor tables by device id and not user id, for ios. 
     
@@ -76,17 +77,18 @@ def parse_ios_df(df_ex, dbloc):
             dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
             ret['BLUETOOTH'] = dfp[['timestamp', 'user_id', 'bt_address', 'bt_rssi', 'bt_name']] 
         elif ev_id ==  21:              # "1709500823,15,9.089999999850988,0,0 #will keep the timestamp present in the 'data' field 
-            dfp = df_ex.loc[df_ex['event_id'] == ev_id, ['user_id', 'data']]
+            dfp = df_ex.loc[df_ex['event_id'] == ev_id, ['timestamp', 'user_id', 'data']]
             dfp['data'] = dfp['data'].str.decode("utf-8")
-            dfp = pd.concat([dfp['user_id'], dfp['data'].str.split(',', expand=True)], axis=1)
-            dfp.rename(columns={
-                                0 : 'timestamp',
-                                1 : 'field1',
-                                2 : 'field2',
-                                3 : 'field3',
-                                4 : 'field4'
+            dfp = pd.concat([dfp[['user_id','timestamp']], dfp['data'].str.split(',', expand=True)], axis=1)
+            dfp.rename(columns={'timestamp' : 'start_time', 
+                                0 : 'end_time',
+                                1 : 'step_count',
+                                2 : 'est_distance',
+                                3 : 'floors_ascended',
+                                4 : 'floors_descended'
                                                 }, inplace = True ) 
-            dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')        
+            dfp['end_time'] = pd.to_datetime(dfp['end_time'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')   
+            dfp['start_time'] = pd.to_datetime(dfp['start_time'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')         
             ret['STEPS_IOS'] = dfp
         elif ev_id == 22:   
             dfp = explode_json(df_ex,ev_id)
@@ -143,21 +145,25 @@ def parse_ios_df(df_ex, dbloc):
             dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
             ret['BRIGHTNESS'] = dfp[['timestamp', 'user_id', 'brightness']]
         
-        elif ev_id == 14:     #anche questo è state
+        elif ev_id == 14:    
             dfp = explode_json(df_ex,ev_id)   
             dfp = dfp.astype({'LockState': float})
             dfp = dfp.astype({'LockState': bool})
             ret['SCREEN'] = dfp[['timestamp', 'user_id','LockState']]
 
-        elif ev_id == 111: #battery state TODO based on if this data comes in at every state change, complete it by setting end_date as the time of the following update 
+        elif ev_id == 111: #battery connected to external power TODO based on if this data comes in at every state change, complete it by setting end_date as the time of the following update 
             dfp = explode_json(df_ex,ev_id, drop_timestamp=True) 
             dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
             #dfp.rename(columns={'timestamp' : 'start_date'}, inplace = True)
             dfp = dfp.astype({"battery_state": int})
+            dfp["battery_state"] = dfp["battery_state"].map( {2: 'charging', 
+                                                              1: 'unplugged', 
+                                                              3: 'full', 
+                                                              0: 'unknown'})
             #ret['DEVICE_STATE'] = pd.concat([ret['DEVICE_STATE'], dfp[['user_id','start_date','battery_state']]])
             ret['BATTERY_STATE'] = dfp[['user_id','timestamp','battery_state']]
 
-        elif ev_id == 11:     #battery 
+        elif ev_id == 11:    #battery
             dfp = explode_json(df_ex,ev_id, drop_timestamp=True)   
             dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
             dfp = dfp.astype({'battery_left': float})
@@ -202,12 +208,16 @@ def parse_and_df(df_ex, dbloc):
 
 
     for ev_id in df_ex['event_id'].unique():
-        #ret = dict()
         if ev_id == 171:    
             dfp = explode_json(df_ex,ev_id, drop_timestamp=False)   
             #dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
             dfp.rename(columns={'level' : 'battery_left', "state": 'battery_state'}, inplace = True)
             dfp = dfp.astype({'battery_left': float, "battery_state": int})
+            dfp['battery_state'] = dfp['battery_state'].map({2:'charging', 
+                                                            3 : 'unplugged',  #'discharging' is changed to match with ios 
+                                                            5 : 'full', 
+                                                            4 : 'unplugged', #'not_charging' is changed to match with ios 
+                                                            1 : 'unknown'})
             ret['BATTERY_LEVEL'] = dfp[['timestamp', 'user_id','battery_left']]
             ret['BATTERY_STATE'] = dfp[['timestamp', 'user_id','battery_state']]
             
@@ -232,7 +242,7 @@ def parse_and_df(df_ex, dbloc):
             df_c[list(missing_columns)] = None
             ret['LOCATION_MORE'] = df_c
 
-        elif ev_id == 902: #location ping one single numerical field
+        elif ev_id == 902: #location ping one single numerical field: app tried to collect location data
             dfp = explode_json(df_ex, ev_id)    
             dfp.rename(columns={0 : 'ping'}, inplace = True )    
             ret['LOCATION_PING'] = dfp[['timestamp', 'user_id','ping']]
@@ -266,11 +276,11 @@ def parse_and_df(df_ex, dbloc):
                 par[['bt_address', 'bt_rssi','bt_class']] = None
                 ret['BLUETOOTH'] = par
              
-        elif ev_id ==  202:       #TODO? also include steps since boot?
+        elif ev_id ==  202:      
             dfp = explode_json(df_ex,ev_id, drop_timestamp = True)
             dfp['start_time'] = pd.to_datetime(dfp['start_time'], unit='ms', utc=True).dt.tz_convert('Europe/Zurich') 
             dfp['end_time'] = pd.to_datetime(dfp['end_time'], unit='ms', utc=True).dt.tz_convert('Europe/Zurich')        
-            ret['STEPS'] = dfp[['start_time', 'end_time','user_id', 'steps']]
+            ret['STEPS'] = dfp[['start_time', 'end_time','user_id', 'steps', 'steps_since_boot', 'time_since_boot']]
         elif ev_id == 210:   #"[{'number': '83653d9d0e8628eb301cef41df5722502f50eb94', 'type': 2, 'date': 1701967333263, 'duration': 73}]"
             ll = df_ex.loc[df_ex['event_id'] == 210,'data'].iloc[0].decode('utf-8')
             ll = ast.literal_eval(ll)
@@ -280,8 +290,15 @@ def parse_and_df(df_ex, dbloc):
             calls_data = pd.json_normalize(calls_data_list)
             calls_data.drop(['timestamp'],axis = 1, inplace=True) #drop timestamp relative to data dump
             calls_data.rename(columns={'date' : 'timestamp', 'type':'callType'}, inplace = True) #keep only internal timestamp
+            calls_data['callType'] = calls_data['callType'].map({1: 'incoming', 
+                                                                 2: 'outgoing', 
+                                                                 3: 'missed', 
+                                                                 4: 'voicemail', 
+                                                                 5: 'rejected', 
+                                                                 6: 'blocked', 
+                                                                 7: 'answered_externally'}) 
             calls_data = calls_data.astype({"duration": float})
-            ret['CALL_LOG'] = calls_data[['timestamp', 'user_id', 'number', 'callType', 'duration']] #TODO harmonize with ios
+            ret['CALL_LOG'] = calls_data[['timestamp', 'user_id', 'number', 'callType', 'duration']] 
         elif ev_id == 136:    
             dfp = explode_json(df_ex,ev_id)   
             dfp.rename(columns={
@@ -306,7 +323,7 @@ def parse_and_df(df_ex, dbloc):
             apps_df.drop(['timestamp'],axis = 1, inplace=True) #drop timestamp relative to data dump
             apps_df['last_time_used'] = pd.to_datetime(apps_df['last_time_used'], unit='ms', utc=True).dt.tz_convert('Europe/Zurich')
             apps_df.rename(columns={'last_time_used' : 'timestamp'}, inplace = True)
-            ret['APP_USAGE'] = apps_df #TODO look into complete dataset to see all categories present in the data and remap to numbers "package_category" column 
+            ret['APP_USAGE'] = apps_df 
         elif ev_id == 11: 
             ret['SERVICES_STARTED'] = [] 
         elif ev_id == 199:  
