@@ -121,13 +121,13 @@ def parse_ios_df(df_ex, dbloc):
 
                 dfp['user_id'] = ret['DEVICE_INFO']['user_id'][0]
                 dfp['device_id'] = ret['DEVICE_INFO']['device_id'][0]
-                dfp['device_id'] = ret['DEVICE_INFO']['os'][0]
-                ret['DEVICE_INFO'] = dfp[['user_id','device_id','name', 'bundle', 'version', 'productType', 'operatingSystemVersion','start_time']]
+                dfp['os'] = ret['DEVICE_INFO']['os'][0]
+                ret['DEVICE_INFO'] = dfp[['user_id','device_id','os','name', 'bundle', 'version', 'productType', 'operatingSystemVersion','start_time']]
         elif ev_id == 23:   
             dfp = explode_json(df_ex,ev_id,drop_timestamp=True)   
             dfp = dfp.astype({"duration": float})
             dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
-            ret['CALL_LOG'] = dfp[['timestamp', 'user_id', 'callId', 'callType', 'duration']]
+            ret['CALL_LOG'] = dfp[['timestamp', 'user_id', 'callId', 'callType', 'duration']] #TODO harmonize with ios 'Disconnected', unknown, dialing, connected, incoming 
         elif ev_id == 987:     
             dfp = explode_json(df_ex,ev_id)
             dfp.rename(columns={
@@ -164,7 +164,7 @@ def parse_ios_df(df_ex, dbloc):
                                                               3: 'full', 
                                                               0: 'unknown'})
             #ret['DEVICE_STATE'] = pd.concat([ret['DEVICE_STATE'], dfp[['user_id','start_date','battery_state']]])
-            ret['BATTERY_STATE'] = dfp[['user_id','timestamp','battery_state']]
+            ret['BATTERY_STATE'] = dfp[['timestamp','user_id','battery_state']]
 
         elif ev_id == 11:    #battery
             dfp = explode_json(df_ex,ev_id, drop_timestamp=True)   
@@ -292,16 +292,17 @@ def parse_and_df(df_ex, dbloc):
             calls_data_list = df_ex.loc[df_ex['event_id'] == 210].apply(extract_from_json_list, axis=1).explode().tolist()
             calls_data = pd.json_normalize(calls_data_list)
             calls_data.drop(['timestamp'],axis = 1, inplace=True) #drop timestamp relative to data dump
-            calls_data.rename(columns={'date' : 'timestamp', 'type':'callType'}, inplace = True) #keep only internal timestamp
-            calls_data['callType'] = calls_data['callType'].map({1: 'incoming', 
-                                                                 2: 'outgoing', 
+            calls_data.rename(columns={'date' : 'timestamp', 'type':'callType', 'number' : 'callId'}, inplace = True) #keep only internal timestamp
+            calls_data['callType'] = calls_data['callType'].map({1: 'incoming', #connected ?
+                                                                 2: 'outgoing', #dialing ?
                                                                  3: 'missed', 
                                                                  4: 'voicemail', 
                                                                  5: 'rejected', 
                                                                  6: 'blocked', 
                                                                  7: 'answered_externally'}) 
+            #'Disconnected', unknown, dialing, connected , incoming  
             calls_data = calls_data.astype({"duration": float})
-            ret['CALL_LOG'] = calls_data[['timestamp', 'user_id', 'number', 'callType', 'duration']] 
+            ret['CALL_LOG'] = calls_data[['timestamp', 'user_id', 'callId', 'callType', 'duration']] 
         elif ev_id == 136:    
             dfp = explode_json(df_ex,ev_id)   
             dfp.rename(columns={
