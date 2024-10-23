@@ -119,7 +119,10 @@ def parse_ios_df(df_ex, dbloc):
                 #ret['DEVICE_STATE'] = pd.concat([ret['DEVICE_STATE'], dfp[['user_id','start_date','end_date','operatingSystemVersion']]], axis = 0)
                 #ret['DEVICE_INFO'].loc[:,'productType'] = dfp['productType'].iloc[0]
 
-                ret['DEVICE_INFO'] = dfp[['name', 'bundle', 'version', 'productType', 'operatingSystemVersion','start_time']]
+                dfp['user_id'] = ret['DEVICE_INFO']['user_id'][0]
+                dfp['device_id'] = ret['DEVICE_INFO']['device_id'][0]
+                dfp['device_id'] = ret['DEVICE_INFO']['os'][0]
+                ret['DEVICE_INFO'] = dfp[['user_id','device_id','name', 'bundle', 'version', 'productType', 'operatingSystemVersion','start_time']]
         elif ev_id == 23:   
             dfp = explode_json(df_ex,ev_id,drop_timestamp=True)   
             dfp = dfp.astype({"duration": float})
