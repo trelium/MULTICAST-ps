@@ -2,8 +2,8 @@ TABLES = {
         'LOCATION' : """CREATE TABLE `LOCATION` (
                     `TIMESTAMP` TIMESTAMP NOT NULL,
                     `USER_ID` varchar(40) NOT NULL,
-                    `LATITUDE` decimal(17,15) ,
-                    `LONGITUDE` decimal(17,15) ,
+                    `LATITUDE` decimal(9,6) ,
+                    `LONGITUDE` decimal(9,6) ,
                     `ACCURACY` float ,  
                     `ALTITUDE` float ,
                     `SOURCE` varchar(50) ,
@@ -20,7 +20,10 @@ TABLES = {
                         `HASSPEED` boolean ,
                         `TRAVELSTATE` varchar(255) ,
                         ) ENGINE=InnoDB;""",
-        'LOCATION_PING' : """""",
+        'LOCATION_PING' : """CREATE TABLE `LOCATION_PING` (
+                        `TIMESTAMP` TIMESTAMP NOT NULL,
+                        `USER_ID` varchar(40) NOT NULL,
+                        `PING` boolean """,
         'WIFI_CONNECTED' : """CREATE TABLE `WIFI_CONNECTED` (
                         `TIMESTAMP` TIMESTAMP NOT NULL,
                         `USER_ID` varchar(40) NOT NULL,
