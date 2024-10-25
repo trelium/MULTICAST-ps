@@ -6,7 +6,7 @@ TABLES = {
                     `LONGITUDE` decimal(9,6) ,
                     `ACCURACY` float ,  
                     `ALTITUDE` float ,
-                    `SOURCE` varchar(50) ,
+                    `SOURCE` varchar(50) 
                     ) ENGINE=InnoDB;""",  
         'LOCATION_MORE': """CREATE TABLE `LOCATION_MORE` (
                         `TIMESTAMP` TIMESTAMP NOT NULL,
@@ -18,12 +18,13 @@ TABLES = {
                         `HASBEARING` boolean ,
                         `NEWWORKLOCATIONTYPE` varchar(255) ,
                         `HASSPEED` boolean ,
-                        `TRAVELSTATE` varchar(255) ,
+                        `TRAVELSTATE` varchar(255)
                         ) ENGINE=InnoDB;""",
         'LOCATION_PING' : """CREATE TABLE `LOCATION_PING` (
                         `TIMESTAMP` TIMESTAMP NOT NULL,
                         `USER_ID` varchar(40) NOT NULL,
-                        `PING` boolean """,
+                        `PING` boolean
+                         ) ENGINE=InnoDB;""",   
         'WIFI_CONNECTED' : """CREATE TABLE `WIFI_CONNECTED` (
                         `TIMESTAMP` TIMESTAMP NOT NULL,
                         `USER_ID` varchar(40) NOT NULL,
@@ -48,9 +49,9 @@ TABLES = {
         'BLUETOOTH' : """CREATE TABLE `BLUETOOTH` (
                                     `TIMESTAMP` TIMESTAMP NOT NULL,
                                     `USER_ID` varchar(40) NOT NULL,
-                                    `BT_ADDRESS` varchar(150) ,
-                                    `BT_RSSI` mediumint
-                                    `BT_NAME` varchar(150) ,
+                                    `BT_ADDRESS` varchar(150),
+                                    `BT_RSSI` mediumint,
+                                    `BT_NAME` varchar(150) 
                                     ) ENGINE=InnoDB;""",                                    
         'STEPS_IOS': """CREATE TABLE `STEPS_IOS` (
                                     `USER_ID` varchar(40) NOT NULL,
@@ -88,8 +89,8 @@ TABLES = {
         'ACTIVITY' : """CREATE TABLE `ACTIVITY` (
                             `TIMESTAMP` TIMESTAMP NOT NULL,
                             `USER_ID` varchar(40) NOT NULL,
-                            `ACTIVITY` varchhar(20) ,
-                            `CONFIDENCE` varchhar(20) 
+                            `ACTIVITY` varchar(20) ,
+                            `CONFIDENCE` varchar(20) 
                             ) ENGINE=InnoDB;""",    
         'BRIGHTNESS' : """CREATE TABLE `BRIGHTNESS` (
                             `TIMESTAMP` TIMESTAMP NOT NULL,

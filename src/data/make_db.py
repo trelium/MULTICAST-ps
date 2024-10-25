@@ -10,7 +10,10 @@ import pickle
 import sys
 import json
 from parsing import parse_and_df, parse_ios_df
-
+from database import SensingDB
+from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
+from dotenv import load_dotenv
 
 def load_df():
     return
@@ -85,6 +88,16 @@ def main():
     paths = build_file_index(args.path, args.pickle)
 
     logger.info(f'Found {len(paths)} files to process')
+
+    load_dotenv() 
+    engine = create_engine(URL.create(
+                                drivername = "mysql+mysqlconnector",
+                                username=os.environ.get('DB_USER'),
+                                password=os.environ.get('DB_PW'),  
+                                host=os.environ.get('DB_HOST'),
+                                database=os.environ.get('DB_NAME'),
+                                ))
+
     #------------
     for dbloc in paths:
         conn = sqlite3.connect(dbloc)
@@ -98,7 +111,6 @@ def main():
                 logger.error(f"Can't read database file: {dbloc} --- error: {ex_value}")
             continue
     
-        #logger.info(dbloc)
         try:
             if dbloc[-3:] == 'dbr':
                 dft = dft[['timestamp','data_type','data']]
@@ -106,7 +118,7 @@ def main():
                                     'data_type' : 'event_id'
                                                     }, inplace = True )
 
-                _ = parse_and_df(dft, dbloc)
+                df_dict = parse_and_df(dft, dbloc)
                 
             elif dbloc[-3:] == '.db':
                 dft = dft[['event_time','event_id','event_data','device_id', 'user_id']]
@@ -114,7 +126,7 @@ def main():
                                     'event_data' : 'data',
                                     'event_time' : 'timestamp'
                                                     }, inplace = True )
-                _ = parse_ios_df(dft, dbloc)
+                df_dict = parse_ios_df(dft, dbloc)
         except:
             ex_type, ex_value, ex_traceback = sys.exc_info()
             logger.error(f"Parsing failed, no data extracted at location: {dbloc} --- error: {ex_value}")
@@ -122,6 +134,13 @@ def main():
         ##return rows as list of tuples        records = df.to_records(index=False)   return list(records)
         #columns must be same 
         
+        for df_name in df_dict.keys():
+            df_dict[df_name].to_sql(name = df_name,
+                con = engine,
+                if_exists = "append",
+                index = False
+                )
+
 
     logger.info(f'Execution complete for path: {args.path}')
 

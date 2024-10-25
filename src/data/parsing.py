@@ -23,7 +23,7 @@ def parse_ios_df(df_ex, dbloc):
     ret = dict()
     ret['DEVICE_INFO'] = df_ex[['user_id','device_id']].copy()
     ret['DEVICE_INFO'] = ret['DEVICE_INFO'].assign(os='ios')
-    ret['DEVICE_STATE'] = pd.DataFrame()
+    #ret['DEVICE_STATE'] = pd.DataFrame()
 
     def explode_json(df,ev_id, drop_timestamp = False):
         if drop_timestamp: 
@@ -154,7 +154,7 @@ def parse_ios_df(df_ex, dbloc):
             dfp = dfp.astype({'LockState': bool})
             ret['SCREEN'] = dfp[['timestamp', 'user_id','LockState']]
 
-        elif ev_id == 111: #battery connected to external power TODO based on if this data comes in at every state change, complete it by setting end_date as the time of the following update 
+        elif ev_id == 111:
             dfp = explode_json(df_ex,ev_id, drop_timestamp=True) 
             dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
             #dfp.rename(columns={'timestamp' : 'start_date'}, inplace = True)
@@ -172,9 +172,11 @@ def parse_ios_df(df_ex, dbloc):
             dfp = dfp.astype({'battery_left': float})
             ret['BATTERY_LEVEL'] = dfp[['timestamp', 'user_id','battery_left']]
         
-
-    ret['DEVICE_INFO'] = ret['DEVICE_INFO'].drop_duplicates()
-    ret['DEVICE_INFO'].rename(columns={ 'productType' : 'product_type'}, inplace=True)
+    try:
+        ret['DEVICE_INFO'] = ret['DEVICE_INFO'].drop_duplicates(subset=['user_id','device_id','os','name', 'bundle', 'version', 'productType', 'operatingSystemVersion'])
+    except KeyError:
+        ret['DEVICE_INFO'] = ret['DEVICE_INFO'].drop_duplicates()
+    #ret['DEVICE_INFO'].rename(columns={ 'productType' : 'product_type'}, inplace=True)
 
         
     return ret
@@ -207,7 +209,7 @@ def parse_and_df(df_ex, dbloc):
     ret = dict()
     ret['DEVICE_INFO'] = df_ex[['user_id']].copy()
     ret['DEVICE_INFO'] = ret['DEVICE_INFO'].assign(os='android')
-    ret['DEVICE_STATE'] = pd.DataFrame()
+    #ret['DEVICE_STATE'] = pd.DataFrame()
 
 
     for ev_id in df_ex['event_id'].unique():
@@ -337,5 +339,6 @@ def parse_and_df(df_ex, dbloc):
             dfp.drop(['data'],axis = 1, inplace=True)
             ret['NOTIFICATIONS'] = dfp
 
+    ret['DEVICE_INFO'].assign(DEVICE_ID='not_provided') #for compatibility with sql schema 
     ret['DEVICE_INFO'] = ret['DEVICE_INFO'].drop_duplicates()
     return ret        
