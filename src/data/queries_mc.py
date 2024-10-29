@@ -11,7 +11,7 @@ TABLES = {
         'LOCATION_MORE': """CREATE TABLE `LOCATION_MORE` (
                         `TIMESTAMP` TIMESTAMP NOT NULL,
                         `USER_ID` varchar(40) NOT NULL,
-                        `SATELLITES` int,
+                        `SATELLITES` smallint,
                         `SPEED` float,
                         `NEWWORKLOCATIONSOURCE` varchar(255) ,
                         `BEARING` float ,
@@ -51,7 +51,8 @@ TABLES = {
                                     `USER_ID` varchar(40) NOT NULL,
                                     `BT_ADDRESS` varchar(150),
                                     `BT_RSSI` mediumint,
-                                    `BT_NAME` varchar(150) 
+                                    `BT_NAME` varchar(150),
+                                    `BT_CLASS` varchar(20)
                                     ) ENGINE=InnoDB;""",                                    
         'STEPS_IOS': """CREATE TABLE `STEPS_IOS` (
                                     `USER_ID` varchar(40) NOT NULL,
@@ -66,11 +67,13 @@ TABLES = {
                                     `START_TIME` TIMESTAMP NOT NULL, 
                                     `END_TIME` TIMESTAMP NOT NULL, 
                                     `USER_ID` varchar(40) NOT NULL,
-                                    `STEPS` mediumint
+                                    `STEPS` mediumint,
+                                    `STEPS_SINCE_BOOT` mediumint,
+                                    `TIME_SINCE_BOOT` int unsigned
                                     ) ENGINE=InnoDB;""",
         'DEVICE_INFO' : """CREATE TABLE `DEVICE_INFO` (
                                         `USER_ID` varchar(40) NOT NULL,
-                                        `DEVICE_ID` varchar(40) NOT NULL,
+                                        `DEVICE_ID` varchar(40) DEFAULT NULL,
                                         `OS` varchar(10),
                                         `NAME` varchar(255),
                                         `BUNDLE` varchar(255),
@@ -90,7 +93,7 @@ TABLES = {
                             `TIMESTAMP` TIMESTAMP NOT NULL,
                             `USER_ID` varchar(40) NOT NULL,
                             `ACTIVITY` varchar(20) ,
-                            `CONFIDENCE` varchar(20) 
+                            `CONFIDENCE` varchar(100) 
                             ) ENGINE=InnoDB;""",    
         'BRIGHTNESS' : """CREATE TABLE `BRIGHTNESS` (
                             `TIMESTAMP` TIMESTAMP NOT NULL,
@@ -113,6 +116,7 @@ TABLES = {
                             `BATTERY_LEFT` tinyint 
                             ) ENGINE=InnoDB;""" ,
         'SMS' :  """CREATE TABLE `SMS` (
+                    `USER_ID` varchar(40) NOT NULL,
                     `ADDRESS` varchar(255),
                     `TYPE` tinyint,
                     `TIMESTAMP` timestamp,

@@ -13,6 +13,7 @@ from parsing import parse_and_df, parse_ios_df
 from database import SensingDB
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
+from sqlalchemy.exc import IntegrityError
 from dotenv import load_dotenv
 
 def load_df():
@@ -135,11 +136,14 @@ def main():
         #columns must be same 
         
         for df_name in df_dict.keys():
-            df_dict[df_name].to_sql(name = df_name,
-                con = engine,
-                if_exists = "append",
-                index = False
-                )
+            try: 
+                df_dict[df_name].to_sql(name = df_name,
+                    con = engine,
+                    if_exists = "append",
+                    index = False
+                    )
+            except IntegrityError:
+                logger.error(f"Data violates schema constraints, no data extracted for table {df_name} at location: {dbloc}")
 
 
     logger.info(f'Execution complete for path: {args.path}')

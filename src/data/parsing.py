@@ -40,7 +40,7 @@ def parse_ios_df(df_ex, dbloc):
                 df2 = df2.apply(json.loads).apply(pd.Series)    
             except JSONDecodeError:
                 ex_type, ex_value, ex_traceback = sys.exc_info()
-                logger.warning(f"Malformed json at location: {dbloc} --- error: {ex_value}")
+                logger.warning(f"Malformed json for event_id {ev_id} at location: {dbloc} --- error: {ex_value}")
                 return pd.DataFrame()
         
         return pd.concat([df1, df2], axis = 1)
@@ -65,8 +65,9 @@ def parse_ios_df(df_ex, dbloc):
                 ret['LOCATION'] = dfp
         elif ev_id == 18: 
             dfp = explode_json(df_ex,ev_id,drop_timestamp=True)
-            dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
-            ret['WIFI_CONNECTED'] = dfp[['timestamp', 'user_id', 'bssid', 'ssid']]
+            if not dfp.empty: #json is correctly parsed 
+                dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
+                ret['WIFI_CONNECTED'] = dfp[['timestamp', 'user_id', 'bssid', 'ssid']]
         elif ev_id == 181: 
             dfp = explode_json(df_ex,ev_id,drop_timestamp=True)
             dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')        
@@ -75,7 +76,7 @@ def parse_ios_df(df_ex, dbloc):
         elif ev_id == 19:   
             dfp = explode_json(df_ex,ev_id,drop_timestamp=True)
             dfp['timestamp'] = pd.to_datetime(dfp['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
-            ret['BLUETOOTH'] = dfp[['timestamp', 'user_id', 'bt_address', 'bt_rssi', 'bt_name']] 
+            ret['BLUETOOTH'] = dfp[['timestamp', 'user_id', 'bt_address', 'bt_rssi', 'bt_name']].dropna(axis=0,how='all',inplace=False)
         elif ev_id ==  21:              # "1709500823,15,9.089999999850988,0,0 #will keep the timestamp present in the 'data' field 
             dfp = df_ex.loc[df_ex['event_id'] == ev_id, ['timestamp', 'user_id', 'data']]
             dfp['data'] = dfp['data'].str.decode("utf-8")
@@ -141,6 +142,7 @@ def parse_ios_df(df_ex, dbloc):
                                 0 : 'activity',
                                 1 : 'confidence'
                                                 }, inplace = True )
+            dfp['activity'].replace(r"^ +| +$", r"", regex=True, inplace=True) #remove whitespaces at beginnning and end
             ret['ACTIVITY'] = dfp[['timestamp','user_id','activity', 'confidence']]
         elif ev_id == 13:  
             dfp = explode_json(df_ex,ev_id,drop_timestamp=True)   
@@ -264,27 +266,29 @@ def parse_and_df(df_ex, dbloc):
             if not wifi_data.empty:
                 #wifi_data['timestamp'] = pd.to_datetime(wifi_data['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
                 wifi_data.columns = [x.lower() for x in wifi_data.columns]
-                ret['WIFI_SCANNED'] = wifi_data
+                ret['WIFI_SCANNED'] = wifi_data.dropna(axis=0,how='all',inplace=False)
             else:
                 par  = df_ex.loc[df_ex['event_id'] == ev_id, ['timestamp', 'user_id']].copy()
                 par[['bssid', 'ssid']] = None
-                ret['WIFI_SCANNED'] = par
+                ret['WIFI_SCANNED'] = par.dropna(axis=0,how='all',inplace=False)
         elif ev_id == 10:   
             devices_data_list = df_ex.loc[df_ex['event_id'] == ev_id].apply(extract_from_json_list, axis=1).explode().tolist()
             devices_df = pd.json_normalize(devices_data_list)
             #devices_df['timestamp'] = pd.to_datetime(devices_df['timestamp'], unit='s', utc=True).dt.tz_convert('Europe/Zurich')
             if not devices_df.empty:
                 devices_df.rename(columns={'DEVICE' : 'bt_address', 'RSSI' : 'bt_rssi', 'CLASS' : 'bt_class'}, inplace = True)
-                ret['BLUETOOTH'] = devices_df[['timestamp', 'user_id', 'bt_address', 'bt_rssi','bt_class']]
+                ret['BLUETOOTH'] = devices_df[['timestamp', 'user_id', 'bt_address', 'bt_rssi','bt_class']].dropna(axis=0,how='all',inplace=False)
             else:
                 par = df_ex.loc[df_ex['event_id'] == ev_id, ['timestamp','user_id']].copy()
                 par[['bt_address', 'bt_rssi','bt_class']] = None
-                ret['BLUETOOTH'] = par
+                ret['BLUETOOTH'] = par.dropna(axis=0,how='all',inplace=False)
              
         elif ev_id ==  202:      
             dfp = explode_json(df_ex,ev_id, drop_timestamp = True)
             dfp['start_time'] = pd.to_datetime(dfp['start_time'], unit='ms', utc=True).dt.tz_convert('Europe/Zurich') 
-            dfp['end_time'] = pd.to_datetime(dfp['end_time'], unit='ms', utc=True).dt.tz_convert('Europe/Zurich')        
+            dfp['end_time'] = pd.to_datetime(dfp['end_time'], unit='ms', utc=True).dt.tz_convert('Europe/Zurich')    
+            dfp['time_since_boot'] = dfp['time_since_boot']/1000    #convert from milliseconds to seconds
+            dfp = dfp.astype({"time_since_boot": int})
             ret['STEPS'] = dfp[['start_time', 'end_time','user_id', 'steps', 'steps_since_boot', 'time_since_boot']]
         elif ev_id == 210:   #"[{'number': '83653d9d0e8628eb301cef41df5722502f50eb94', 'type': 2, 'date': 1701967333263, 'duration': 73}]"
             ll = df_ex.loc[df_ex['event_id'] == 210,'data'].iloc[0].decode('utf-8')
@@ -304,6 +308,7 @@ def parse_and_df(df_ex, dbloc):
                                                                  7: 'answered_externally'}) 
             #'Disconnected', unknown, dialing, connected , incoming  
             calls_data = calls_data.astype({"duration": float})
+            calls_data['timestamp'] = pd.to_datetime(calls_data['timestamp'], unit='ms', utc=True).dt.tz_convert('Europe/Zurich')
             ret['CALL_LOG'] = calls_data[['timestamp', 'user_id', 'callId', 'callType', 'duration']] 
         elif ev_id == 136:    
             dfp = explode_json(df_ex,ev_id)   
@@ -329,15 +334,17 @@ def parse_and_df(df_ex, dbloc):
             apps_df.drop(['timestamp'],axis = 1, inplace=True) #drop timestamp relative to data dump
             apps_df['last_time_used'] = pd.to_datetime(apps_df['last_time_used'], unit='ms', utc=True).dt.tz_convert('Europe/Zurich')
             apps_df.rename(columns={'last_time_used' : 'timestamp'}, inplace = True)
+            apps_df['timestamp'] = pd.to_datetime(apps_df['timestamp'], unit = 'ms', utc=True).dt.tz_convert('Europe/Zurich') 
             ret['APP_USAGE'] = apps_df 
-        elif ev_id == 11: 
-            ret['SERVICES_STARTED'] = [] 
-        elif ev_id == 199:  
-            ret['SERVICES_RUNNING'] = [] 
         elif ev_id == 301:  
             dfp = explode_json(df_ex,301, drop_timestamp=False)  
             dfp.drop(['data'],axis = 1, inplace=True)
             ret['NOTIFICATIONS'] = dfp
+        #elif ev_id == 11: 
+        #    ret['SERVICES_STARTED'] = [] 
+        #elif ev_id == 199:  
+        #    ret['SERVICES_RUNNING'] = [] 
+
 
     ret['DEVICE_INFO'].assign(DEVICE_ID='not_provided') #for compatibility with sql schema 
     ret['DEVICE_INFO'] = ret['DEVICE_INFO'].drop_duplicates()
