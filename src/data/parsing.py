@@ -332,9 +332,11 @@ def parse_and_df(df_ex, dbloc):
             apps_data_list = df_ex.loc[df_ex['event_id'] == 22].apply(extract_from_json_list, axis=1).explode().tolist()
             apps_df = pd.json_normalize(apps_data_list)
             apps_df.drop(['timestamp'],axis = 1, inplace=True) #drop timestamp relative to data dump
-            apps_df['last_time_used'] = pd.to_datetime(apps_df['last_time_used'], unit='ms', utc=True).dt.tz_convert('Europe/Zurich')
-            apps_df.rename(columns={'last_time_used' : 'timestamp'}, inplace = True)
-            apps_df['timestamp'] = pd.to_datetime(apps_df['timestamp'], unit = 'ms', utc=True).dt.tz_convert('Europe/Zurich') 
+            #TODO for some rows, value in ms, for others some integer, eg. 89
+            #apps_df.rename(columns={'last_time_used' : 'timestamp'}, inplace = True)
+            apps_df['timestamp'] = apps_df['last_time_used'] 
+            apps_df.loc[(apps_df['timestamp'] < 1696090012000), 'timestamp'] = pd.NaT
+            apps_df['timestamp'] = pd.to_datetime(apps_df['timestamp'], unit='ms', utc=True).dt.tz_convert('Europe/Zurich')
             ret['APP_USAGE'] = apps_df 
         elif ev_id == 301:  
             dfp = explode_json(df_ex,301, drop_timestamp=False)  

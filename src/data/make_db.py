@@ -13,7 +13,7 @@ from parsing import parse_and_df, parse_ios_df
 from database import SensingDB
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, DataError
 from dotenv import load_dotenv
 
 def load_df():
@@ -144,7 +144,9 @@ def main():
                     )
             except IntegrityError:
                 logger.error(f"Data violates schema constraints, no data extracted for table {df_name} at location: {dbloc}")
-
+            except:
+                ex_type, ex_value, ex_traceback = sys.exc_info()
+                logger.error(f"Execution failed: {dbloc} \n {ex_value}")
 
     logger.info(f'Execution complete for path: {args.path}')
 
