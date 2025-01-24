@@ -31,7 +31,7 @@ TABLES = {
                         `BSSID` varchar(250) ,
                         `SSID` varchar(250) 
                         ) ENGINE=InnoDB;""",                
-        'WIFI_STATE' : """CREATE TABLE `WIFI_CONNECTED` (
+        'WIFI_STATE' : """CREATE TABLE `WIFI_STATE` (
                         `TIMESTAMP` TIMESTAMP NOT NULL,
                         `USER_ID` varchar(40) NOT NULL,
                         `WIFI_CONNECTED` boolean ,
@@ -124,6 +124,14 @@ TABLES = {
                     `BODY` smallint,
                     `STATUS` tinyint,
                     `THREAD_ID` smallint
-                    ) ENGINE=InnoDB;"""                                
+                    ) ENGINE=InnoDB;""",
+        'APP_USAGE' : """CREATE TABLE `APP_USAGE` (
+                        `LAST_TIME_USED` BIGINT(20) NULL,
+                        `TIME_IN_FOREGROUND` BIGINT(20) NULL,
+                        `PACKAGE_NAME` TEXT NULL,
+                        `PACKAGE_CATEGORY` TEXT NULL,
+                        `USER_ID` varchar(40) NOT NULL,
+                        `TIMESTAMP` TIMESTAMP NOT NULL
+                    )  ENGINE=InnoDB;"""                           
              
         }
