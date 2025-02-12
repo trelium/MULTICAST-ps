@@ -92,7 +92,7 @@ TABLES = {
         'ACTIVITY' : """CREATE TABLE `ACTIVITY` (
                             `TIMESTAMP` TIMESTAMP NOT NULL,
                             `USER_ID` varchar(40) NOT NULL,
-                            `ACTIVITY` varchar(20) ,
+                            `ACTIVITY` varchar(50) ,
                             `CONFIDENCE` varchar(100) 
                             ) ENGINE=InnoDB;""",    
         'BRIGHTNESS' : """CREATE TABLE `BRIGHTNESS` (

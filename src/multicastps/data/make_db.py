@@ -24,12 +24,12 @@ def build_file_index(path, already_processed):
     to_analyze = iosSenses.union(andSenses) - already_processed # exclude paths that have been uploaded already 
     
     #retrieve csvs for ema 
-    csv_files_ema = glob((os.path.join(path, "ema"))+'*.csv')
+    csv_files_ema = glob((os.path.join(path, "ema", '*.csv')))
     if len(csv_files_ema) != 2:
         raise ValueError(f"Expected 2 CSV files in the folder, but found {len(csv_files_ema)}.")
     
     #retrieve csvs for mc
-    csv_files_mc = glob((os.path.join(path, "mongo_export"))+'*.csv')
+    csv_files_mc = glob((os.path.join(path, "mongo_export", '*.csv')))
     if len(csv_files_mc) != 6:
         raise ValueError(f"Expected 6 CSV files in the folder, but found {len(csv_files_mc)}.")
     
@@ -55,9 +55,9 @@ def dir_path(path):
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--path",
-    help="Directory containing su-directories ema, mongo_export and phone. Make sure you have read privileges to it. Defaults to current wd.",
+    help="Directory containing sub-directories ema, mongo_export and phone. Make sure you have read privileges to it. Defaults to current wd.",
     type=dir_path,  
-    default=os.getcwd(),  # Default to the current working directory
+    default=os.path.join(os.getcwd(),'data','raw'),  # Default to the data folder in current working directory
     required=False   
 )
 parser.add_argument(
@@ -92,10 +92,9 @@ if args.pickle:
 else:
     processed_dbs = set()
 
+logger.info('Execution started')
 paths, paths_ema, paths_mc = build_file_index(args.path, processed_dbs)
 not_copied = dict()
-
-logger.info(f'Found {len(paths)} files to process')
 
 db = MulticastDB()
 
@@ -103,7 +102,6 @@ db = MulticastDB()
 file1, file2 = paths_ema
 df1 = pd.read_csv(file1)
 df2 = pd.read_csv(file2)
-
 # Merge the two DataFrames, keeping common and non-common columns
 merged_df = pd.concat([df1, df2], ignore_index=True)
 
@@ -112,11 +110,16 @@ logger.info('EMA uploaded')
 
 #------------MOBILECOACH DATA UPLOAD
 for file in paths_mc:
+    if os.path.splitext(os.path.basename(file))[0] == "ParticipantVariableWithValue":
+        continue
     df = pd.read_csv(file)
-    db.insert_pd(df, file.split(os.sep)[-1][:-4])
+    db.insert_pd(df, os.path.splitext(os.path.basename(file))[0])
+logger.info('Mobilecoach data uploaded')
     
 #------------PASSIVE SENSING UPLOAD
-for dbloc in paths:
+logger.info(f'Found {len(paths)} phone sensing files to process ({len(processed_dbs)} already processed)')
+
+for dbloc in tqdm(paths):
     failed_skipped_streams = set()
     conn = sqlite3.connect(dbloc)
     try:
@@ -168,11 +171,11 @@ for dbloc in paths:
             failed_skipped_streams.add(stream_name)
     
     #save outcomes of processing operations 
-    if len(failed_skipped_streams != 0):
+    if len(failed_skipped_streams)!= 0:
         not_copied[dbloc] = failed_skipped_streams
     processed_dbs.add(dbloc)
 
 logger.info(f'Execution complete for path: {args.path}')
 # Save to a pickle file
-with open(os.path.join(args.path, 'processed_dbs.pkl'), "wb") as file:
+with open(os.path.join(os.environ.get('LOG_DIR'), 'processed_dbs.pkl'), "wb") as file:
     pickle.dump(processed_dbs, file)
