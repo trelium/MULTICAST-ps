@@ -351,3 +351,13 @@ def parse_and_df(df_ex, dbloc):
     ret['DEVICE_INFO'].assign(DEVICE_ID='not_provided') #for compatibility with sql schema 
     ret['DEVICE_INFO'] = ret['DEVICE_INFO'].drop_duplicates()
     return ret        
+
+def parse_part_vars(df_ex):
+    ret = dict()
+    dfs = df_ex.loc[df_ex['name'] == '$endOfRehaDay', ['value',	'participant']]
+    dfs['participant'] = dfs['participant'].str.replace(r'ObjectId\(|\)', '', regex=True)
+    dfs.columns = ['ema_start', 'USER_ID']
+    dfs['ema_start'] = pd.to_datetime(dfs['ema_start'], format='%d.%m.%Y')
+    ret['StartTimes'] = dfs
+    return ret
+    
