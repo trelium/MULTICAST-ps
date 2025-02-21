@@ -8,7 +8,7 @@ import argparse
 import pickle
 import sys
 from sqlalchemy.exc import IntegrityError, DataError
-from multicastps.data.parsing import parse_and_df, parse_ios_df
+from multicastps.data.parsing import parse_and_df, parse_ios_df, parse_part_vars
 from multicastps.data.database import MulticastDB
 
 from dotenv import load_dotenv
@@ -111,7 +111,11 @@ logger.info('EMA uploaded')
 #------------MOBILECOACH DATA UPLOAD
 for file in paths_mc:
     if os.path.splitext(os.path.basename(file))[0] == "ParticipantVariableWithValue":
-        continue
+        with pd.read_csv(file, chunksize=1000,) as reader:
+            for chunk in reader:
+                df_dict = parse_part_vars(chunk)
+                for stream_name in df_dict.keys():
+                    db.insert_pd(df_dict[stream_name], stream_name)
     df = pd.read_csv(file)
     db.insert_pd(df, os.path.splitext(os.path.basename(file))[0])
 logger.info('Mobilecoach data uploaded')
