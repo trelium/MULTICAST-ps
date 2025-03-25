@@ -93,7 +93,8 @@ class MulticastDB:
 
     def get_sensing_timespan(self, table = None, exact = True):
         """Returns the start and end date of sensing for each participant in the database, across all tables present 
-        If exact is set to true, return all daily time windows for which there is passive sensing data.
+        If exact is set to true, return all daily time windows for which there is passive sensing data, otherwise only return 
+        start and end dates.
         Returns list of tuples 
         """
         all_tables = set(TABLES.keys())
@@ -162,12 +163,74 @@ class MulticastDB:
                     """
         return self.query(qry)
     
+    def get_no_ps_dates(self):
+        ret = self.query("""WITH RECURSIVE date_series AS (
+                    -- Generate date sequence for 28 days from start date
+                    SELECT 
+                        s.USER_ID, 
+                        s.start_date AS missing_date,
+                        DATE_ADD(s.start_date, INTERVAL 27 DAY) AS max_date
+                    FROM PartOverview s
+
+                    UNION ALL
+
+                    SELECT 
+                        ds.USER_ID, 
+                        DATE_ADD(ds.missing_date, INTERVAL 1 DAY), 
+                        ds.max_date
+                    FROM date_series ds
+                    WHERE ds.missing_date < ds.max_date
+                ), recorded_dates AS (
+                    -- Get distinct existing dates from the tables
+                    SELECT DISTINCT USER_ID, DATE(TIMESTAMP) AS recorded_date
+                    FROM (
+                        SELECT USER_ID, TIMESTAMP FROM LOCATION
+                        UNION ALL
+                        SELECT USER_ID, TIMESTAMP FROM ACTIVITY
+                        UNION ALL
+                        SELECT USER_ID, TIMESTAMP FROM WIFI_CONNECTED
+                        UNION ALL
+                        SELECT USER_ID, TIMESTAMP FROM BLUETOOTH
+                        UNION ALL
+                        SELECT USER_ID, TIMESTAMP FROM SCREEN
+                    ) t
+                )
+                -- Find dates that are in date_series but not in recorded_dates
+                SELECT ds.USER_ID, ds.missing_date
+                FROM date_series ds
+                LEFT JOIN recorded_dates r 
+                ON ds.USER_ID = r.USER_ID AND ds.missing_date = r.recorded_date
+                WHERE r.recorded_date IS NULL
+                ORDER BY ds.USER_ID, ds.missing_date;
+
+                        """)
+        return ret 
+
+    def get_count_ps_days(self):
+        ret = self.query("""SELECT USER_ID, COUNT(DISTINCT DATE(TIMESTAMP)) AS recorded_days
+                        FROM (
+                            SELECT USER_ID, TIMESTAMP FROM LOCATION
+                            UNION ALL
+                            SELECT USER_ID, TIMESTAMP FROM ACTIVITY
+                            UNION ALL
+                            SELECT USER_ID, TIMESTAMP FROM WIFI_CONNECTED
+                            UNION ALL
+                            SELECT USER_ID, TIMESTAMP FROM BLUETOOTH
+                            UNION ALL
+                            SELECT USER_ID, TIMESTAMP FROM SCREEN
+                        ) t
+                        GROUP BY USER_ID
+                        ORDER BY USER_ID;
+                        """)
+        return ret 
+
     def update_overview(self):
         self.drop_tables('PartOverview')
         # make table with part_code, part_code_harmonized, user_id, is_participant
         # note that some device_ids that are present in the ps tables from a time before study start
         # might not be present here as the database was cleaned before study start 
         with self.engine.connect() as connection:
+            #create table
             qry = """CREATE TABLE IF NOT EXISTS PartOverview (
                         part_code VARCHAR(15),
                         part_code_harm VARCHAR(10),
@@ -175,6 +238,8 @@ class MulticastDB:
                         is_participant BOOLEAN
                     );"""
             res = connection.execute(text(qry))
+            
+            #select values from Participant table to populate with part_code, part_code_harm, user_id, is_participant
             #note: there are duplicate values in Participant
             qry = """INSERT INTO PartOverview (part_code, part_code_harm, user_id, is_participant) 
                     SELECT 
@@ -186,10 +251,43 @@ class MulticastDB:
                     """
             res = connection.execute(text(qry))
 
+            #parse user_id names
             qry = """UPDATE PartOverview
                     SET user_id = REPLACE(REPLACE(user_id, 'ObjectId(', ''), ')', '');
                     """
             res = connection.execute(text(qry))
+
+            #include start dates sourced from ema table (second oldest day) end end 27 days after that.
+            #start date will differ from actual start date if participant skipped the first day of surveys 
+            qry = """
+                    ALTER TABLE PartOverview 
+                    ADD COLUMN start_date DATE, 
+                    ADD COLUMN end_date DATE;
+                    """
+            res = connection.execute(text(qry))
+
+        with self.engine.connect() as connection:
+            #include start dates sourced from ema table (second oldest day)
+            qry = """ UPDATE PartOverview po
+                    LEFT JOIN (
+                        SELECT participantCode, MIN(submitdate) AS second_oldest_date
+                        FROM (
+                            SELECT participantCode, submitdate, 
+                                ROW_NUMBER() OVER (PARTITION BY participantCode ORDER BY submitdate) AS rn
+                            FROM EMA
+                        ) ranked
+                        WHERE rn = 2
+                        GROUP BY participantCode
+                    ) sod
+                    ON po.part_code = sod.participantCode
+                    SET po.start_date = sod.second_oldest_date, 
+                        po.end_date = DATE_ADD(sod.second_oldest_date, INTERVAL 27 DAY);
+                    """
+            res = connection.execute(text(qry))
+            
+
+
+            #TODO support for harminizing participant codes with the wrong format eg 'MC_1⁰499' to MC_1049
         self.metadata.reflect()
          
 
@@ -197,14 +295,26 @@ class MulticastDB:
         self.update_overview() #update participant codes mappings
         ow = self.table_to_csv('PartOverview')
         ow = ow.drop_duplicates() #for safety 
+        
+        #oldest and latest ps rec
         ps_win = pd.DataFrame(self.get_sensing_timespan(exact=False))
         ps_win.columns = ['USER_ID', 'oldest_ps_rec', 'latest_ps_rec']
-        ps_win = ps_win.merge(ow[['user_id','part_code_harm']], left_on='USER_ID', right_on='user_id', how='left')
+        ps_win = ps_win.merge(ow[['user_id','part_code','part_code_harm']], left_on='USER_ID', right_on='user_id', how='left')
+        ps_win = ps_win.groupby('part_code_harm', as_index=False).agg(
+                            oldest_ps_rec=('oldest_ps_rec', 'min'),
+                            latest_ps_rec=('latest_ps_rec', 'max')
+                            )
+        
+        #oldest and latest ema rec
         ema_win = pd.DataFrame(self.get_ema_timespan(exact=False))
         ema_win.columns = ['participantCode', 'oldest_ema_rec', 'latest_ema_rec']
-        ema_win = ema_win.merge(ow[['part_code','part_code_harm']], left_on='participantCode', right_on='part_code', how='left')
+        ema_win = ema_win.merge(ow[['user_id','part_code','part_code_harm']], left_on='participantCode', right_on='part_code', how='left')
+        ema_win = ema_win.groupby('part_code_harm', as_index=False).agg(
+                    oldest_ema_rec=('oldest_ema_rec', 'min'),
+                    latest_ema_rec=('latest_ema_rec', 'max')
+                    )
         
-        #get all sensing windows 
+        #get all daily sensing windows 
         tot_psws = pd.DataFrame()
         all_tables = set(TABLES.keys())
         all_tables.discard('DEVICE_INFO')
@@ -212,12 +322,11 @@ class MulticastDB:
             psws = pd.DataFrame(self.get_sensing_timespan(table = table, exact=True))
             psws['table'] = table
             tot_psws = pd.concat([psws, tot_psws])
-        #change from user_id to participant code harmonized
-        tot_psws = tot_psws.merge(ow, left_on='USER_ID', right_on='user_id', how='left')
+        tot_psws = tot_psws.merge(ow, left_on='USER_ID', right_on='user_id', how='left')        #change from user_id to participant code harmonized
         #add EMA windows 
         emaws = pd.DataFrame(self.get_ema_timespan(exact=True))
         emaws['table'] = 'EMA'
-        emaws = emaws.merge(ow, left_on='participantCode', right_on='part_code', how='left') 
+        emaws = emaws.merge(ow, left_on='participantCode', right_on='part_code', how='left')    #change from participantCode to participant code harmonized
         tot_psws = pd.concat([emaws, tot_psws],join = 'inner')
         # Group tot_psws by harmonized part code and create a dictionary with min and max values per participant
         ps_ema_ws = tot_psws.groupby('part_code_harm').apply(lambda g: {
@@ -227,28 +336,43 @@ class MulticastDB:
             } for table in g["table"].unique()
         }).reset_index(name='all_windows') 
 
-        #missed_emas participantCode submitdate there will be one record per sent survey 
-        emas = self.table_to_csv('EMA')
+        #missed_emas 
+        emas = self.table_to_csv('EMA') #there will be one record per sent survey 
         emas['submitdate'] = pd.to_datetime(emas['submitdate'])
         emas = emas.merge(ow, left_on='participantCode', right_on='part_code', how='left')
         emas_count = emas.groupby('part_code_harm')['submitdate'].count().reset_index()
         emas_count.columns = ['part_code_harm', 'ema_count']        # Rename column for clarity
+        emas_count['ema_count'] = emas_count['ema_count'] -1         # first submitted survey is from tutorial and does not count TODO this needs to happen on part code not on harm 
         emas_count['ema_missed'] = 70 - emas_count['ema_count'] #70 total prompts
         emas_count['ema_missed_pct'] = emas_count['ema_missed'] * 100 /70
         emas_count['ema_missed_pct'] = emas_count['ema_missed_pct'].round(2)
-        #ps_missing_days
-        emas_st = self.table_to_csv('StartTimes') #USER_ID    ema_start
-        emas_st = emas_st.merge(ow,left_on='USER_ID', right_on='user_id', how='left')
-        #hr_no_ps
-        ret = emas_count.merge(ps_ema_ws,left_on='part_code_harm', right_on='part_code_harm', how='left')
-        ret = ret.merge(ema_win,left_on='part_code_harm', right_on='part_code_harm', how='left')
-        ret = ret.merge(ps_win,left_on='part_code_harm', right_on='part_code_harm', how='left')
-        ret = ret.merge(emas_st,left_on='part_code_harm', right_on='part_code_harm', how='left')
+        
+        #dates of days with no ps
+        days_no_ps = pd.DataFrame(self.get_no_ps_dates(), columns=['user_id','day_missing_ps']) 
+        days_no_ps = days_no_ps.merge(ow, how='left')
+        miss_ps = days_no_ps.groupby('part_code_harm').agg(
+                    dates_no_ps=('day_missing_ps', list),      # Convert to list
+                    days_no_ps=('day_missing_ps', 'count')  # Count occurrences
+                ).reset_index()
+        #miss_ps = miss_ps.merge(ow, how='left', on = 'user_id' )
+        
+        #days_ps
+        days_ps = pd.DataFrame(self.get_count_ps_days(), columns=['user_id','days_ps'])
+        days_ps = days_ps.merge(ow, how='left', on = 'user_id' )
+        days_ps.groupby('part_code_harm', as_index=False)['days_ps'].sum() #sum counts per part code harm, get part_code_harm and ps_days_count
+        
+        #merging all extracted dataframes together 
+        ret = emas_count.merge(ps_ema_ws,on = 'part_code_harm', how='left') 
+        ret = ret.merge(ema_win,on = 'part_code_harm', how='left')
+        ret = ret.merge(ps_win,on = 'part_code_harm', how='left')
+        ret = ret.merge(miss_ps,on = 'part_code_harm', how='left')
+        ret = ret.merge(days_ps,on = 'part_code_harm', how='left')
+        ret = ret.merge(ow['part_code_harm','start_date','end_date'],on = 'part_code_harm', how='left')
 
         #cleanup
         ret.columns = ret.columns.str.lower()  # Convert all column names to lowercase
         columns_to_drop = [col.lower() for col in ['participantCode', 'part_code_x', 'USER_ID_x', 
                                                 'user_id_x', 'USER_ID_y', 'part_code_y', 
-                                                'user_id_y', 'is_participant']]
+                                                'user_id_y', 'is_participant', 'user_id', 'part_code']]
         ret.drop(columns=[col for col in columns_to_drop if col in ret.columns], inplace=True)
         return ret

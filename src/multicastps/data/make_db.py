@@ -81,6 +81,13 @@ parser.add_argument(
     default=list(TABLES.keys()),
     nargs='+'
 )
+parser.add_argument(
+    "--sources",
+    help="Which sources to pull data from",
+    type=str,
+    default='ALL',
+    choices=["ALL", "PM", "PR"]
+)
 
 args = parser.parse_args()
 

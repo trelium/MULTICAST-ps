@@ -11,6 +11,13 @@ import re
 
 logger = logging.getLogger('make_db')
 
+def safe_decode_utf8(series):
+    decoded_series = series.str.decode("utf-8")
+    if decoded_series.isnull().sum() == 0:  # Ensure no nulls appeared
+        return decoded_series
+    else:
+        return series  # Return the original series if decoding fails
+
 def parse_ios_df(df_ex, dbloc):
     """Take as input one pandas dataframe for ios sensing streams and 
     return a dictionary with keys corresponding to the sensing stream ids contained in the input dataframe 
@@ -79,7 +86,7 @@ def parse_ios_df(df_ex, dbloc):
             ret['BLUETOOTH'] = dfp[['timestamp', 'user_id', 'bt_address', 'bt_rssi', 'bt_name']].dropna(axis=0,how='all',inplace=False)
         elif ev_id ==  21:              # "1709500823,15,9.089999999850988,0,0 #will keep the timestamp present in the 'data' field 
             dfp = df_ex.loc[df_ex['event_id'] == ev_id, ['timestamp', 'user_id', 'data']]
-            dfp['data'] = dfp['data'].str.decode("utf-8")
+            dfp['data'] = safe_decode_utf8(dfp['data'])
             dfp = pd.concat([dfp[['user_id','timestamp']], dfp['data'].str.split(',', expand=True)], axis=1)
             dfp.rename(columns={'timestamp' : 'start_time', 
                                 0 : 'end_time',
@@ -136,7 +143,7 @@ def parse_ios_df(df_ex, dbloc):
             ret['HEART_BEAT'] = dfp[['timestamp', 'user_id','heart_beat']]  
         elif ev_id == 16:  
             dfp = df_ex.loc[df_ex['event_id'] == ev_id, ['user_id', 'timestamp', 'data']]
-            dfp['data'] = dfp['data'].str.decode("utf-8")
+            dfp['data'] = safe_decode_utf8(dfp['data'])
             dfp = pd.concat([dfp[['timestamp','user_id']], dfp['data'].str.split(',', expand=True)], axis=1)
             dfp.rename(columns={
                                 0 : 'activity',
@@ -195,7 +202,7 @@ def parse_and_df(df_ex, dbloc):
 
     def extract_from_json_list(row):
         # Convert the bytes to string
-        json_str = row['data'].decode('utf-8')
+        json_str = safe_decode_utf8(row['data'])
         # Convert the string to a dictionary
         json_dict = json.loads(json_str)
         # Extract the data list and attach timestamp and user_id
@@ -353,11 +360,16 @@ def parse_and_df(df_ex, dbloc):
     return ret        
 
 def parse_part_vars(df_ex):
+    """
+    return a dictionary with keys corresponding to table names, values corresponding to pandas dataframes with extracted data
+    StartTimes: dates of hospital discharge
+    """
     ret = dict()
+    #extract date when participant replied 'yesì to hospital discharge EMA quesiton
     dfs = df_ex.loc[df_ex['name'] == '$endOfRehaDay', ['value',	'participant']]
     dfs['participant'] = dfs['participant'].str.replace(r'ObjectId\(|\)', '', regex=True)
     dfs.columns = ['ema_start', 'USER_ID']
     dfs['ema_start'] = pd.to_datetime(dfs['ema_start'], format='%d.%m.%Y')
-    ret['StartTimes'] = dfs
+    ret['StartTimesMc'] = dfs
     return ret
     
