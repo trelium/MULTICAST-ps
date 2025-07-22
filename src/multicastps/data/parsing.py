@@ -202,7 +202,10 @@ def parse_and_df(df_ex, dbloc):
 
     def extract_from_json_list(row):
         # Convert the bytes to string
-        json_str = safe_decode_utf8(row['data'])
+        try:
+            json_str = safe_decode_utf8(row['data'])
+        except AttributeError:
+            json_str = row['data']
         # Convert the string to a dictionary
         json_dict = json.loads(json_str)
         # Extract the data list and attach timestamp and user_id
