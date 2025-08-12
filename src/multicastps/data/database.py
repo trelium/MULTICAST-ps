@@ -243,9 +243,9 @@ class MulticastDB:
             res = connection.execute(text(qry))
             
             #select values from Participant table to populate with part_code, part_code_harm, user_id, is_participant
-            #note: there are duplicate values in Participant
+            #note: there might be duplicate values in Participant
             qry = """INSERT INTO PartOverview (part_code, part_code_harm, user_id, is_participant) 
-                    SELECT 
+                    SELECT DISTINCT
                         nickname AS part_code,
                         NULLIF(REGEXP_SUBSTR(nickname, '^(MC_|BMC_)[0-9]{4}'), '') AS part_code_harm,
                         _id AS user_id,
