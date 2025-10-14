@@ -165,43 +165,51 @@ class MulticastDB:
     
     def get_no_ps_dates(self):
         ret = self.query("""WITH RECURSIVE date_series AS (
-                    -- Generate date sequence for 28 days from start date
-                    SELECT 
-                        s.USER_ID, 
-                        s.start_date AS missing_date,
-                        DATE_ADD(s.start_date, INTERVAL 27 DAY) AS max_date
-                    FROM PartOverview s
+                -- Start the series with day_index = 1
+                SELECT 
+                    s.USER_ID, 
+                    s.start_date AS missing_date,
+                    DATE_ADD(s.start_date, INTERVAL 27 DAY) AS max_date,
+                    1 AS day_index
+                FROM PartOverview s
 
-                    UNION ALL
+                UNION ALL
 
-                    SELECT 
-                        ds.USER_ID, 
-                        DATE_ADD(ds.missing_date, INTERVAL 1 DAY), 
-                        ds.max_date
-                    FROM date_series ds
-                    WHERE ds.missing_date < ds.max_date
-                ), recorded_dates AS (
-                    -- Get distinct existing dates from the tables
-                    SELECT DISTINCT USER_ID, DATE(TIMESTAMP) AS recorded_date
-                    FROM (
-                        SELECT USER_ID, TIMESTAMP FROM LOCATION
-                        UNION ALL
-                        SELECT USER_ID, TIMESTAMP FROM ACTIVITY
-                        UNION ALL
-                        SELECT USER_ID, TIMESTAMP FROM WIFI_CONNECTED
-                        UNION ALL
-                        SELECT USER_ID, TIMESTAMP FROM BLUETOOTH
-                        UNION ALL
-                        SELECT USER_ID, TIMESTAMP FROM SCREEN
-                    ) t
-                )
-                -- Find dates that are in date_series but not in recorded_dates
-                SELECT ds.USER_ID, ds.missing_date
+                -- Recursively add one day, increasing the index
+                SELECT 
+                    ds.USER_ID, 
+                    DATE_ADD(ds.missing_date, INTERVAL 1 DAY),
+                    ds.max_date,
+                    ds.day_index + 1 AS day_index
                 FROM date_series ds
-                LEFT JOIN recorded_dates r 
-                ON ds.USER_ID = r.USER_ID AND ds.missing_date = r.recorded_date
-                WHERE r.recorded_date IS NULL
-                ORDER BY ds.USER_ID, ds.missing_date;
+                WHERE ds.missing_date < ds.max_date
+            ),
+            recorded_dates AS (
+                -- Get distinct existing dates from all event tables
+                SELECT DISTINCT USER_ID, DATE(TIMESTAMP) AS recorded_date
+                FROM (
+                    SELECT USER_ID, TIMESTAMP FROM LOCATION
+                    UNION ALL
+                    SELECT USER_ID, TIMESTAMP FROM ACTIVITY
+                    UNION ALL
+                    SELECT USER_ID, TIMESTAMP FROM WIFI_CONNECTED
+                    UNION ALL
+                    SELECT USER_ID, TIMESTAMP FROM BLUETOOTH
+                    UNION ALL
+                    SELECT USER_ID, TIMESTAMP FROM SCREEN
+                ) t
+            )
+            -- Find missing dates and include their position (day_index)
+            SELECT 
+                ds.USER_ID, 
+                ds.missing_date,
+                ds.day_index AS day_position
+            FROM date_series ds
+            LEFT JOIN recorded_dates r 
+                ON ds.USER_ID = r.USER_ID 
+            AND ds.missing_date = r.recorded_date
+            WHERE r.recorded_date IS NULL
+            ORDER BY ds.USER_ID, ds.missing_date;
 
                         """)
         return ret 
@@ -356,22 +364,23 @@ class MulticastDB:
         emas_count['ema_missed_pct'] = emas_count['ema_missed_pct'].round(2)
         
         #dates of days with no ps
-        days_no_ps = pd.DataFrame(self.get_no_ps_dates(), columns=['user_id','day_missing_ps']) 
-        days_no_ps = days_no_ps.merge(ow, how='left')
+        days_no_ps = pd.DataFrame(self.get_no_ps_dates(), columns=['user_id','day_missing_ps','index_missing_day']) 
+        days_no_ps = days_no_ps.merge(ow, how='right')
         miss_ps = (
             days_no_ps.groupby('part_code_harm', dropna=False)
             .agg(
                 dates_no_ps=('day_missing_ps', list),  # Convert to list
-                days_no_ps=('day_missing_ps', 'count')  # Count occurrences
+                days_no_ps=('day_missing_ps', 'count'),  # Count occurrences
+                dates_no_ps_idx=('index_missing_day', list)
             )
             .reset_index()
         )
-        miss_ps['days_ps'] = 28-miss_ps['days_no_ps']
+        #miss_ps['days_ps'] = 28-miss_ps['days_no_ps']
         
         #days_ps #NOTE: count all passive sensing days, also including days outside study participation
         days_ps = pd.DataFrame(self.get_count_ps_days(), columns=['user_id','tot_days_ps'])
         days_ps = days_ps.merge(ow, how='left', on = 'user_id' )
-        days_ps.groupby('part_code_harm', as_index=False)['tot_days_ps'].sum() #sum counts per part code harm, get part_code_harm and ps_days_count
+        days_ps = days_ps.groupby('part_code_harm', as_index=False)['tot_days_ps'].sum() #sum counts per part code harm, get part_code_harm and ps_days_count
         
         #study start end date per part_code_harm
         ow['start_date'] = pd.to_datetime(ow['start_date'])
