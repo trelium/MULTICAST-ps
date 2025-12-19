@@ -1,3 +1,9 @@
+# MULTICAST study data management utilities
+This repository contains utilities to:
+- Clean and copy the collected smartphone data form the MULTICAST study to a SQL database \
+- Read/write programmatically the data in the SQL database containng study data \
+- Obtain reports on data coverage based on the data present in the SQL database \
+
 ## Installation
 
 After cloning this repo, create a `.env` file in the root folder of the project with the following values to ingest and access the data:
@@ -36,35 +42,36 @@ data
     └── pm
 ```
 
-## Get started
+## Usage
 
-### Data ingestion
+### Copying data to the SQL database
 
-To use the data for downstream tasks, different data sources need to be copied into a SQL database.
+The code provides functionality to clean and copy data collected by the CORA app and stored in the CORA servers to a SQL database where it is consolidated.
 
-#### Legacy CORA app
+#### Copying data collected by the legacy CORA app
 
 In the legacy version of the app used for data collection (CORA app), study data was uploaded and stored in three different formats. Follow these preliminary steps before importing the data to the SQL database for analysis:
 
-- **EMA survey answers in Limesurvey SQL database**:\
+1. **EMA survey answers in Limesurvey SQL database**:\
   This data needs to be exported manually in `.csv` format from the Limesurvey web interface (see study protocol document for instructions) and copied to `data/raw/ema`.\
   Note that there are two survey results to export, corresponding to an old and a new version of the EMA questionnaires. Both survey answers should be exported and stored in the `/ema` folder.
 
-- **MobileCoach data in MongoDB**:\
-  This data needs to be copied from the MobileCoach server, where it can be exported from the MongoDB instance with the script:
+2. **MobileCoach data in MongoDB**:\
+  This data needs to be copied from the CORA server (MobileCoach) where it is stored in MongoDB. Log into the CORA server and run:
 
   ```bash
   /opt/data_exports_mongo/check_and_extract.sh
   ```
+  This will create a series of .csv files with the data in the current directory.
 
-- **Passive sensing data in SQLite files**:\
-  Copied from the MobileCoach server, where it is stored as a collection of folders in:
+3. **Passive sensing data in SQLite files**:\
+  Copy data from the CORA (MobileCoach) server, where it is stored as a collection of folders in:
 
   ```
   /opt/mobilecoach-server/sensing/uploads/phone
   ```
 
-After completing these preliminary steps, your folder structure should look something like:
+Copy the files obtained above in the previously made folder so that your folder structure looks like:
 
 ```
 └── data
@@ -99,15 +106,21 @@ After completing these preliminary steps, your folder structure should look some
             └── variables-table.csv
 ```
 
-#### Pathmate CORA app
+- **Copy the data to the SQL database**:\
 
-To import and save data from the Pathmate server, run the `download_pm_data` function in:
+To copy data in the SQL database after following the steps above, run:
 
+```bash
+python src/multicastps/data/make_db.py --path /path/to/raw/data/folder --pickle /path/to/pkl/processed_dbs.pkl
 ```
-src/multicastps/data/pm_utils.py
-```
 
-Run the script with the `--path` argument pointing to the raw data folder:
+The `--pickle` argument is optional and can be provided if a file with a list of already copied SQLite files is available.
+
+
+#### Copying data collected by the Pathmate CORA app
+
+1. **Downloading phone data from the Pathmate CORA server**:\
+Run this script with the `--path` argument pointing to the raw data folder where you want to store the data:
 
 ```bash
 python src/multicastps/data/pm_utils.py download_pm_data --path data/raw/pm
@@ -128,12 +141,28 @@ After running the script, the contents of the folder `pm` will look like:
             └── variables-table.csv
 ```
 
-#### Populate the SQL database
 
-To populate the SQL database, run:
+### Read/write data on the SQL database
 
-```bash
-python src/multicastps/data/make_db.py --path /path/to/raw/data/folder --pickle /path/to/pkl/processed_dbs.pkl
-```
+The module `MULTICAST-ps/src/multicastps/data/database.py` contains a class to interact with the database following the object-relational mapping paradigm. Particulary, the `insert_pd()` method can be used to insert a pandas dataframe to a specified table, and `drop_tables()` can be used to delete tables in the database.
 
-The `--pickle` argument is optional and can be provided if a file with a list of already copied SQLite files is available.
+### Obtaining reports on data coverage 
+
+A participant report can be obtained based on the data present in the database. This report consists of a table containg the following information: 
+| Column Name         | Best-Guess Meaning                                                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **part_code_harm**  | Study code associated to a participant. "harm" stands for harmonized: multiple codes e.g. MC_1001_a, MC_1001_b are merged into one (MC_1001)       |
+| **ema_count**       | Total number of EMAs records observed.                |
+| **ema_missed**      | Number of EMAs that were expected but not completed/submitted.                                                  |
+| **ema_missed_pct**  | Percentage of missed EMAs relative to the total expected EMAs.                                                               |
+| **all_windows**     | The set of daily time windows during which there is at least one EMA and passive sensing recording per participant.              |
+| **oldest_ema_rec**  | Timestamp of the earliest EMA record available for a participant.                                                      |
+| **latest_ema_rec**  | Timestamp of the most recent EMA record available for a participant.                                                                   |
+| **oldest_ps_rec**   | Timestamp of the earliest passive sensing record across all sensor streams.  |
+| **latest_ps_rec**   | Timestamp of the most recent passive sensing record across all sensor streams.                                                                        |
+| **dates_no_ps**     | List of dates on which no passive sensing data was recorded, considering the period start_date - en_date.                                                                      |
+| **days_no_ps**      | Count of days without any passive sensing  data, considering the period start_date - en_date.                                                                                      |
+| **dates_no_ps_idx** | Day index numbers counted from start_date representing the dates without passive sensing data.                                             |
+| **tot_days_ps**     | Total number of days with available passive sensing data, considering also days outside study participation.                                                                               |
+| **start_date**      | Beginning date of study participation, corresponding to the second oldest EMA recording date.                                                         |
+| **end_date**        | Ending date of study participation, corresponding to start_date + 28 days.                                                           |
