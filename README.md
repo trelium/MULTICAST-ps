@@ -1,8 +1,8 @@
 # MULTICAST study data management utilities
 This repository contains utilities to:
-- Clean and copy the collected smartphone data form the MULTICAST study to a SQL database \
-- Read/write programmatically the data in the SQL database containng study data \
-- Obtain reports on data coverage based on the data present in the SQL database \
+- Clean and copy the collected smartphone data form the MULTICAST study to a SQL database 
+- Read/write programmatically the data in the SQL database containng study data 
+- Obtain reports on data coverage based on the data present in the SQL database 
 
 ## Installation
 
@@ -106,7 +106,7 @@ Copy the files obtained above in the previously made folder so that your folder 
             └── variables-table.csv
 ```
 
-- **Copy the data to the SQL database**:\
+**Copy the data to the SQL database**:
 
 To copy data in the SQL database after following the steps above, run:
 
@@ -148,21 +148,21 @@ The module `MULTICAST-ps/src/multicastps/data/database.py` contains a class to i
 
 ### Obtaining reports on data coverage 
 
-A participant report can be obtained based on the data present in the database. This report consists of a table containg the following information: 
-| Column Name         | Best-Guess Meaning                                                                                                           |
+A participant report can be obtained based on the data present in the database. It can be obtained via the `make_participant_report()` method in `database.py`. This report consists of a table containg the following information: 
+| Column Name         | Description                                                                                                         |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| **part_code_harm**  | Study code associated to a participant. "harm" stands for harmonized: multiple codes e.g. MC_1001_a, MC_1001_b are merged into one (MC_1001)       |
+| **part_code_harm**  | Study code associated to a participant. "harm" stands for harmonized: multiple codes e.g. MC_1001_a, MC_1001_b are transformed into a univocal one that identifies a participant (MC_1001)       |
 | **ema_count**       | Total number of EMAs records observed.                |
 | **ema_missed**      | Number of EMAs that were expected but not completed/submitted.                                                  |
 | **ema_missed_pct**  | Percentage of missed EMAs relative to the total expected EMAs.                                                               |
-| **all_windows**     | The set of daily time windows during which there is at least one EMA and passive sensing recording per participant.              |
+| **all_windows**     | The set of daily time windows during which there is at least one EMA / passive sensing recording, divided per sensor stream.              |
 | **oldest_ema_rec**  | Timestamp of the earliest EMA record available for a participant.                                                      |
 | **latest_ema_rec**  | Timestamp of the most recent EMA record available for a participant.                                                                   |
 | **oldest_ps_rec**   | Timestamp of the earliest passive sensing record across all sensor streams.  |
 | **latest_ps_rec**   | Timestamp of the most recent passive sensing record across all sensor streams.                                                                        |
-| **dates_no_ps**     | List of dates on which no passive sensing data was recorded, considering the period start_date - en_date.                                                                      |
-| **days_no_ps**      | Count of days without any passive sensing  data, considering the period start_date - en_date.                                                                                      |
+| **dates_no_ps**     | List of dates on which no passive sensing data was recorded, considering the period start_date - en_date and selecting together location, activity, wifi, bluetooth and screen activation recordings.                                                                      |
+| **days_no_ps**      | Count of days without any passive sensing  data, considering the period start_date - en_date and selecting together location, activity, wifi, bluetooth and screen activation recordings.                                                                                      |
 | **dates_no_ps_idx** | Day index numbers counted from start_date representing the dates without passive sensing data.                                             |
 | **tot_days_ps**     | Total number of days with available passive sensing data, considering also days outside study participation.                                                                               |
-| **start_date**      | Beginning date of study participation, corresponding to the second oldest EMA recording date.                                                         |
+| **start_date**      | Beginning date of study participation, corresponding to the second oldest EMA recording. date.                                                         |
 | **end_date**        | Ending date of study participation, corresponding to start_date + 28 days.                                                           |
